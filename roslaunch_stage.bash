@@ -16,10 +16,11 @@ cp -T ~/cfs_rosws/myworld.world ~/rosws/src/robot_driver/world/myworld.world || 
 
 # build the new package
 cd ~/rosws || { echo '///// cd ~/rosws FAILED! /////' ; exit 1; }
+source ~/rosws/devel/setup.bash || { echo '///// source ~/rosws/devel/setup.bash FAILED! /////' ; exit 1; }
 catkin_make || { echo '///// catkin_make FAILED! /////' ; exit 1; }
 
 # source to the workspace with the new package
-source ~/rosws/devel/setup.bash || { echo '///// cd ~/rosws FAILED! /////' ; exit 1; }
+source ~/rosws/devel/setup.bash || { echo '///// source ~/rosws/devel/setup.bash FAILED! /////' ; exit 1; }
 
 # run ROS for the robot with roslaunch
 roslaunch robot_driver stage.launch || { echo '///// roslaunch FAILED! /////' ; exit 1; }
