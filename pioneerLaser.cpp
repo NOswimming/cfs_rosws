@@ -11,6 +11,7 @@ using namespace std;
 bool DEBUG_PrintStateChange = true;
 bool DEBUG_WriteMapUpdateToFile = true;
 bool DEBUG_PrintCurrentPose = false;
+bool DEBUG_PrintScannedArray = false;
 
 ////////// CLASSES //////////
 
@@ -71,17 +72,28 @@ Vector2Float currentGoal (0,0);
 // Scan
 float scanStartOrientation = 0;
 int scanned[4] = {0,0,0,0};
-float scanTolerance = 0.01;
+float scanTolerance = 0.1;
 
-// States
+// State variables
 int previousState = 0;
 int currentState = 0;
+int nextState = 0;
+int nextCallEnterState = 0;
+
+// STATES
 int STATE_START = 0;
 int STATE_OBJECTAVOIDANCE = -1;
 int STATE_PATHING = 1;
 int STATE_SCANNING = 2;
 
+
 ////////// HELPER FUNCTIONS //////////
+
+void setNextState(int state, bool callEnterState)
+{
+	nextState = state;
+	nextCallEnterState = callEnterState;
+}
 
 /**
  * Gets the average laser data range for a given set of indices inclusive.
@@ -129,6 +141,21 @@ Vector2Float getOdomPositionForGrid(Vector2Int &gridPosition, Vector2Float &grid
 	float x = gridPosition.x * gridResolution + gridOffset.x;
 	float y = gridPosition.y * gridResolution + gridOffset.y;
 	return Vector2Float(x, y);
+}
+
+float wrapAngle(float angle)
+{
+	if (angle > 1)
+	{
+		return angle - 2;
+	}
+
+	if (angle < -1)
+	{
+		return angle + 2;
+	}
+
+	return angle;
 }
 
 /**
@@ -244,62 +271,6 @@ void DEBUG_printNavigationMap()
 }
 
 
-////////// STATE FUNCTIONS //////////
-
-void getStateName(int state, char* outStr)
-{
-	if (state == STATE_START)
-	{
-		strcpy(outStr, "START");
-		return;
-	}
-	if (state == STATE_PATHING)
-	{
-		strcpy(outStr, "PATHING");
-		return;
-	}
-	if (state == STATE_OBJECTAVOIDANCE)
-	{
-		strcpy(outStr, "OBJECT AVOIDANCE");
-		return;
-	}
-	if (state == STATE_SCANNING)
-	{
-		strcpy(outStr, "SCANNING");
-		return;
-	}
-	strcpy(outStr, "UNKNOWN STATE");
-}
-
-
-void setCurrentState(int state)
-{
-	if (state == currentState)
-	{
-		// No change in state
-		return;
-	}
-	
-	previousState = currentState;
-	currentState = state;
-	
-	if (DEBUG_PrintStateChange)
-	{
-		char previousStateName[20];
-		getStateName(previousState, previousStateName);
-		char currentStateName[20];
-		getStateName(currentState, currentStateName);
-		
-		ROS_INFO("\nState changed from %s to %s", previousStateName, currentStateName);
-	}
-}
-
-void gotoPreviousState()
-{
-	setCurrentState(previousState);
-}
-
-
 
 ////////// MAPPING FUNCTIONS //////////
 
@@ -411,7 +382,12 @@ void populateNavigationMap()
 
 ////////// PATHING FUNCTIONS //////////
 
-void pathToCurrentGoal(const nav_msgs::Odometry::ConstPtr &odom)
+void getNewGoal()
+{
+	// TODO
+}
+
+void pathToCurrentGoal(const geometry_msgs::Pose &pose)
 {
 	// TODO
 }
@@ -432,12 +408,149 @@ void scanArea(float currentOrientation)
 	// Set to be stationary and turn
 	velocityCommand.linear.x = 0;
 	velocityCommand.angular.z = -0.6;
-	
+
+	float scanOrientation90 = wrapAngle(scanStartOrientation + 0.5);
+	float scanOrientation180 = wrapAngle(scanStartOrientation + 1);
+	float scanOrientation270 = wrapAngle(scanStartOrientation + 1.5);
 	
 	// start orientation requires extra condition or will immediately be true
-	if (currentOrientation > scanStartOrientation - scanTolerance && currentOrientation < scanStartOrientation + scanTolerance && scanned[0] == 1)
+	if (currentOrientation > scanStartOrientation - scanTolerance && currentOrientation < scanStartOrientation + scanTolerance && scanned[2] == 1)
+	{
+		scanned[0] = 1;
+	}
+
+	if (currentOrientation > scanOrientation90 - scanTolerance && currentOrientation < scanOrientation90 + scanTolerance)
+	{
+		scanned[1] = 1;
+	}
+
+	if (currentOrientation > scanOrientation180 - scanTolerance && currentOrientation < scanOrientation180 + scanTolerance)
+	{
+		scanned[2] = 1;
+	}
+
+	if (currentOrientation > scanOrientation270 - scanTolerance && currentOrientation < scanOrientation270 + scanTolerance)
 	{
 		scanned[3] = 1;
+	}
+
+	// If all four axis have been scanned then change to path following
+	if (scanned[0] + scanned[1] + scanned[2] + scanned[3] == 4)
+	{
+		setNextState(STATE_PATHING, true);
+	}
+
+	if (DEBUG_PrintScannedArray)
+	{
+		ROS_INFO("\nScanned Array: %d %d %d %d \nScan Start Orientation: %f Current Orientation: %f", scanned[0], scanned[1], scanned[2], scanned[3], scanStartOrientation, currentOrientation);
+	}
+
+
+}
+
+////////// STATE FUNCTIONS //////////
+
+/**
+ * Does any state specific setup when a state is entered
+ */
+void enterState(int state)
+{
+	if (state == STATE_START)
+	{
+		return;
+	}
+	if (state == STATE_PATHING)
+	{
+		getNewGoal();
+		return;
+	}
+	if (state == STATE_OBJECTAVOIDANCE)
+	{
+		return;
+	}
+	if (state == STATE_SCANNING)
+	{
+		newScan(currentPose.orientation.z);
+		return;
+	}
+	ROS_INFO("UNKNOWN STATE: %d", state);
+}
+
+void getStateName(int state, char* outStr)
+{
+	if (state == STATE_START)
+	{
+		strcpy(outStr, "START");
+		return;
+	}
+	if (state == STATE_PATHING)
+	{
+		strcpy(outStr, "PATHING");
+		return;
+	}
+	if (state == STATE_OBJECTAVOIDANCE)
+	{
+		strcpy(outStr, "OBJECT AVOIDANCE");
+		return;
+	}
+	if (state == STATE_SCANNING)
+	{
+		strcpy(outStr, "SCANNING");
+		return;
+	}
+	strcpy(outStr, "UNKNOWN STATE");
+}
+
+
+void setCurrentState(int state, bool callEnterState)
+{
+	if (state == currentState)
+	{
+		// No change in state
+		return;
+	}
+
+	// Set current and previous states	
+	previousState = currentState;
+	currentState = state;
+
+	// Call enter state for the new state
+	if (callEnterState)
+	{
+		enterState(currentState);
+	}
+	
+	if (DEBUG_PrintStateChange)
+	{
+		char previousStateName[20];
+		getStateName(previousState, previousStateName);
+		char currentStateName[20];
+		getStateName(currentState, currentStateName);
+		
+		ROS_INFO("\nState changed from %s to %s", previousStateName, currentStateName);
+	}
+}
+
+void checkState()
+{
+	if (nextState != STATE_START) {
+		setCurrentState(nextState, nextCallEnterState);
+		nextState = STATE_START;
+	}
+
+	if (currentState == STATE_START)
+	{
+		setNextState(STATE_SCANNING, true);
+	}
+	
+	if (currentState == STATE_SCANNING)
+	{
+		scanArea(currentPose.orientation.z);
+	}
+	
+	if (currentState == STATE_PATHING)
+	{
+		pathToCurrentGoal(currentPose);
 	}
 }
 
@@ -472,23 +585,7 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr &odom)
 	// Update current pose
 	currentPose = odom->pose.pose;
 	
-	
-	if (currentState == STATE_START)
-	{
-		newScan(odom->pose.pose.orientation.z);
-		setCurrentState(STATE_SCANNING);
-	}
-	
-	if (currentState == STATE_SCANNING)
-	{
-		scanArea(odom->pose.pose.orientation.z);
-	}
-	
-	if (currentState == STATE_PATHING)
-	{
-		pathToCurrentGoal(odom);
-	}
-	
+	checkState();
 	
 	
 	if (DEBUG_PrintCurrentPose)
@@ -507,10 +604,6 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 	// Array length
 	float rangeDataNum = 1 + (laserScanData->angle_max - laserScanData->angle_min) / (laserScanData->angle_increment);
 
-	// Move forward
-	velocityCommand.linear.x = 0.1;
-	velocityCommand.angular.z = 0;
-
 	float leftVal = averageRange(laserScanData, rangeDataNum - 65, rangeDataNum - 1);
 	float rightVal = averageRange(laserScanData, 0, 63);
 	float midVal = averageRange(laserScanData, rangeDataNum / 2 - 32, rangeDataNum / 2 + 32);
@@ -521,7 +614,7 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 		if (laserScanData->ranges[j] < laserScanTolerance)
 		{
 			// If a laser scan is within the tolerance then move to object avoidance state
-			setCurrentState(STATE_OBJECTAVOIDANCE);
+			setNextState(STATE_OBJECTAVOIDANCE, false);
 			
 			velocityCommand.linear.x = 0;
 			if (rightVal > leftVal)
@@ -541,7 +634,7 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 	
 	if (currentState == STATE_OBJECTAVOIDANCE)
 	{
-		gotoPreviousState();
+		setNextState(previousState, false);
 	}
 
 }
