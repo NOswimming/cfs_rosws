@@ -7,6 +7,11 @@
 #include <fstream>
 using namespace std;
 
+////////// DEBUGGING //////////
+bool DEBUG_PrintStateChange = true;
+bool DEBUG_WriteMapUpdateToFile = true;
+bool DEBUG_PrintCurrentPose = false;
+
 ////////// CLASSES //////////
 
 class Vector2Int
@@ -35,14 +40,13 @@ public:
 
 ////////// VARIABLES //////////
 
-// Debug output
-bool DEBUG_statechange = true;
-
 geometry_msgs::Twist velocityCommand;
 geometry_msgs::Pose currentPose;
 
 float prevX, prevY, prevOdom;
 int debugLoopCount = 0;
+
+float laserScanTolerance = 0.25;
 
 float mapResolution = 0.05;
 Vector2Int mapSize(400, 400);
@@ -270,10 +274,16 @@ void getStateName(int state, char* outStr)
 
 void setCurrentState(int state)
 {
+	if (state == currentState)
+	{
+		// No change in state
+		return;
+	}
+	
 	previousState = currentState;
 	currentState = state;
 	
-	if (DEBUG_statechange)
+	if (DEBUG_PrintStateChange)
 	{
 		char previousStateName[20];
 		getStateName(previousState, previousStateName);
@@ -440,21 +450,17 @@ void scanArea(float currentOrientation)
  */
 void mapCallback(const nav_msgs::OccupancyGrid::ConstPtr &map)
 {
-	int width = map->info.width;
-	int height = map->info.height;
-	float infoX = map->info.origin.position.x;
-	float infoY = map->info.origin.position.y;
-
-	ROS_INFO("\nMap Size: %d, %d\nMap Origin: %f, %f", width, height, infoX, infoY);
-
 	// Populate the tiled map by reducing the occupancy grid to a lower resolution and summing the values
 	populateTiledMap(map);
-	DEBUG_printTiledMap();
-
+	// Update the naviagtion map based on the tiled map values
 	populateNavigationMap();
-	DEBUG_printNavigationMap();
-
-	ROS_INFO("\nDATA: %f , %f", infoX, infoY);
+	
+	if (DEBUG_WriteMapUpdateToFile)
+	{
+		ROS_INFO("\nMap Size: %d, %d\nMap Origin: %f, %f", map->info.width, map->info.height, map->info.origin.position.x, map->info.origin.position.y);
+		DEBUG_printTiledMap();
+		DEBUG_printNavigationMap();
+	}	
 }
 
 /**
@@ -463,6 +469,10 @@ void mapCallback(const nav_msgs::OccupancyGrid::ConstPtr &map)
  */
 void odomCallback(const nav_msgs::Odometry::ConstPtr &odom)
 {
+	// Update current pose
+	currentPose = odom->pose.pose;
+	
+	
 	if (currentState == STATE_START)
 	{
 		newScan(odom->pose.pose.orientation.z);
@@ -478,14 +488,14 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr &odom)
 	{
 		pathToCurrentGoal(odom);
 	}
+	
+	
+	
+	if (DEBUG_PrintCurrentPose)
+	{
+		ROS_INFO("CURRENT POSE\nPosition: %f, %f Orientation: %f", currentPose.position.x, currentPose.position.y, currentPose.orientation.z);
+	}
 
-	currentPose = odom->pose.pose;
-
-	float currentX = currentPose.position.x;
-	float currentY = currentPose.position.y;
-	float orientZ = currentPose.orientation.z;
-
-ROS_INFO("\nDATA: %f, %f\nORIENT: %f",currentX,currentY,orientZ);
 }
 
 /**
@@ -494,17 +504,10 @@ ROS_INFO("\nDATA: %f, %f\nORIENT: %f",currentX,currentY,orientZ);
  */
 void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 {
-	float currentX = currentPose.position.x;
-	float currentY = currentPose.position.y;
-	float orientZ = currentPose.orientation.z;
-
-// Example of using some of the non-range data-types
+	// Array length
 	float rangeDataNum = 1 + (laserScanData->angle_max - laserScanData->angle_min) / (laserScanData->angle_increment);
-	float leftRange = 0, rightRange = 0;
-//Defined constants
-	int j = 0;
-//Left
 
+	// Move forward
 	velocityCommand.linear.x = 0.1;
 	velocityCommand.angular.z = 0;
 
@@ -512,64 +515,34 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 	float rightVal = averageRange(laserScanData, 0, 63);
 	float midVal = averageRange(laserScanData, rangeDataNum / 2 - 32, rangeDataNum / 2 + 32);
 
-// DEBUG INFORMATION
-	if (debugLoopCount == 15)
-	{
-		//ROS_INFO("\nLaser Scan Data: Range Max: %f Range Min: %f", laserScanData->range_max, laserScanData->range_min);
-		//ROS_INFO("\nTest Global odom: %f, %f\nORIENT: %f", currentX, currentY, orientZ);
-		//ROS_INFO("\nlazers: %f, %f,  %f", leftVal, midVal, rightVal);
-		debugLoopCount = 0;
-	}
-	debugLoopCount++;
-
-//To avoid obstacles
+	//To avoid obstacles
 	for (int j = 0; j < rangeDataNum; ++j) // Go through the laser data
 	{
-		if (laserScanData->ranges[j] < 0.25)
+		if (laserScanData->ranges[j] < laserScanTolerance)
 		{
+			// If a laser scan is within the tolerance then move to object avoidance state
+			setCurrentState(STATE_OBJECTAVOIDANCE);
+			
 			velocityCommand.linear.x = 0;
-			if (laserScanData->ranges[0] > laserScanData->ranges[(int) rangeDataNum - 1])
+			if (rightVal > leftVal)
 			{
+				// Turn right
 				velocityCommand.angular.z = -0.6;
 			}
 			else
 			{
+				// Turn left
 				velocityCommand.angular.z = 0.6;
 			}
 			return;
 
 		}
 	}
-
-//F shaped intersection
-	if (((rightVal > 60) || isnan(rightVal)) && (midVal > 60 || isnan(midVal)))
+	
+	if (currentState == STATE_OBJECTAVOIDANCE)
 	{
-		if (prevX == -1 && prevY == -1)
-		{
-			prevX = currentX;
-			prevY = currentY;
-			return;
-		}
-		else
-		{
-			if (((prevX - currentX) * (prevX - currentX) + (prevY - currentY) * (prevY - currentY)) > 3)
-			{
-				velocityCommand.linear.x = 0;
-				ROS_INFO("\nTFshapeIntersection: %f, %f\nORIENT: %f", currentX, currentY, orientZ);
-			}
-		}
+		gotoPreviousState();
 	}
-	else
-	{
-		//Reset odom data
-		prevX = -1;
-		prevY = -1;
-	}
-
-// Set to stationary
-/*	velocityCommand.linear.x = 0;
-	velocityCommand.angular.z = 0;
-*/
 
 }
 
