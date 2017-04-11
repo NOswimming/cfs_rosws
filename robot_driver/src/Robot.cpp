@@ -54,6 +54,12 @@ float scanStartOrientation = 0;
 int scanned[4] = {0,0,0,0};
 float scanTolerance = 0.1;
 
+//Basic
+Vector2Float basicStartPosition(0,0);
+bool basicOtherPoint = false;
+float basicLoopDistance = 2.0;
+float basicLoopTolerance = 1.0;
+
 // State variables
 int previousState = 0;
 int currentState = 0;
@@ -65,6 +71,7 @@ int STATE_START = 0;
 int STATE_OBJECTAVOIDANCE = -1;
 int STATE_PATHING = 1;
 int STATE_SCANNING = 2;
+int STATE_BASIC = 3;
 
 void initializeRobot()
 {
@@ -91,6 +98,60 @@ void setRobotMovement(float linearSpeed, float rotationalSpeed)
 	setRobotMovementWithTolerance(linearSpeed, rotationalSpeed, scanTolerance);
 }
 
+////////// BASIC FUNCTIONS //////////
+
+void setBasicStartPosition()
+{
+	basicStartPosition.x = currentPose.position.x;
+	basicStartPosition.y = currentPose.position.y;
+	basicOtherPoint = false;
+}
+
+bool checkLoop()
+{
+	setRobotMovementWithTolerance(0.1, 0, 0.3);
+	
+	float xDiff = basicStartPosition.x - currentPose.position.x;
+	float yDiff = basicStartPosition.y - currentPose.position.y;
+	
+	if (xDiff > basicLoopDistance || xDiff < -basicLoopDistance) 
+	{
+		basicOtherPoint = true;
+	}
+	
+	if (yDiff > basicLoopDistance || yDiff < -basicLoopDistance) 
+	{
+		basicOtherPoint = true;
+	}
+	
+	if (basicOtherPoint)
+	{
+		if (xDiff < basicLoopTolerance && xDiff > -basicLoopTolerance) 
+		{
+			if (yDiff < basicLoopTolerance && yDiff > -basicLoopTolerance) 
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+float getLaserScanTolerance (int i, int max)
+{
+	if(i < max / 3)
+	{
+		return laserScanTolerance - 0.5;
+	}
+	else if(i < max * 2 / 3)
+	{
+		return laserScanTolerance;
+	}
+	else
+	{
+		return laserScanTolerance - 0.5;
+	}
+}
 
 
 
@@ -155,48 +216,48 @@ void populateNavigationMap()
 	{
 		for (int x = 0; x < navigationMapSize.x; x++)
 		{
-			// If the tile is not unknown then skip it
-			if (navigationMap[navigationMapSize.x * y + x] != -1)
+			// If the tile is unknown then calculate it
+			if (navigationMap[navigationMapSize.x * y + x] == -1)
 			{
-				break;
+				positionTopRight.x = x;
+				positionTopRight.y = y;
+
+				positionTopLeft.x = x - 1;
+				positionTopLeft.y = y;
+
+				positionBottomRight.x = x;
+				positionBottomRight.y = y - 1;
+
+				positionBottomLeft.x = x - 1;
+				positionBottomLeft.y = y - 1;
+
+				// Get four tiles
+				int topRight = getTiledMapValue(positionTopRight);
+				int topLeft = getTiledMapValue(positionTopLeft);
+				int bottomRight = getTiledMapValue(positionBottomRight);
+				int bottomLeft = getTiledMapValue(positionBottomLeft);
+				
+				
+
+				int value = 1;
+
+				// If any of the tiles are occupied then treat the area as occupied
+				if (topRight > 0 || topLeft > 0 || bottomRight > 0 || bottomLeft > 0)
+				{
+					value = 1;
+				}
+				// If any of the tiles are unknown then treat the area as unknown
+				else if (topRight < 0 || topLeft < 0 || bottomRight < 0 || bottomLeft < 0)
+				{
+					value = -1;
+				}
+				else
+				{
+					value = 0;
+				}
+				
+				navigationMap[navigationMapSize.x * y + x] = value;
 			}
-
-			positionTopRight.x = x;
-			positionTopRight.y = y;
-
-			positionTopLeft.x = x - 1;
-			positionTopLeft.y = y;
-
-			positionBottomRight.x = x;
-			positionBottomRight.y = y - 1;
-
-			positionBottomLeft.x = x - 1;
-			positionBottomLeft.y = y - 1;
-
-			// Get four tiles
-			int topRight = getTiledMapValue(positionTopRight);
-			int topLeft = getTiledMapValue(positionTopLeft);
-			int bottomRight = getTiledMapValue(positionBottomRight);
-			int bottomLeft = getTiledMapValue(positionBottomLeft);
-
-			int value = 1;
-
-			// If any of the tiles are occupied then treat the area as occupied
-			if (topRight > 0 || topLeft > 0 || bottomRight > 0 || bottomLeft > 0)
-			{
-				value = 1;
-			}
-			// If any of the tiles are unknown then treat the area as unknown
-			else if (topRight < 0 || topLeft < 0 || bottomRight < 0 || bottomLeft < 0)
-			{
-				value = -1;
-			}
-			else
-			{
-				value = 0;
-			}
-
-			navigationMap[navigationMapSize.x * y + x] = value;
 
 		}
 	}
@@ -353,6 +414,11 @@ void enterState(int state)
 		newScan(currentPose.orientation.z);
 		return;
 	}
+	if (state == STATE_BASIC)
+	{
+		setBasicStartPosition();
+		return;
+	}
 	ROS_INFO("UNKNOWN STATE: %d", state);
 }
 
@@ -378,7 +444,12 @@ void getStateName(int state, char* outStr)
 		strcpy(outStr, "SCANNING");
 		return;
 	}
-	strcpy(outStr, "UNKNOWN STATE");
+	if (state == STATE_BASIC)
+	{
+		strcpy(outStr, "BASIC");
+		return;
+	}
+	strcpy(outStr, "UNKNOWN SbasicStartPositionTATE");
 }
 
 
@@ -420,9 +491,9 @@ void checkState()
 
 	if (currentState == STATE_START)
 	{
+		// start with basic
+		setNextState(STATE_BASIC, true);
 		//setNextState(STATE_SCANNING, true);
-		// TODO: chnage
-		setNextState(STATE_PATHING, true);
 	}
 
 	if (currentState == STATE_SCANNING)
@@ -433,5 +504,13 @@ void checkState()
 	if (currentState == STATE_PATHING)
 	{
 		pathToCurrentGoal(currentPose);
+	}
+	
+	if (currentState == STATE_BASIC)
+	{
+		if (checkLoop())
+		{
+			setNextState(STATE_SCANNING, true);
+		}
 	}
 }

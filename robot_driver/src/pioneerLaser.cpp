@@ -23,6 +23,12 @@ using namespace std;
  */
 void mapCallback(const nav_msgs::OccupancyGrid::ConstPtr &map)
 {
+	// do not populate the map on object avoidance or basic
+	if (currentState == STATE_OBJECTAVOIDANCE || currentState == STATE_BASIC)
+	{
+		return;
+	}
+	
 	// Populate the tiled map by reducing the occupancy grid to a lower resolution and summing the values
 	populateTiledMap(map);
 	// Update the naviagtion map based on the tiled map values
@@ -63,35 +69,76 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 {
 	// Array length
 	float rangeDataNum = 1 + (laserScanData->angle_max - laserScanData->angle_min) / (laserScanData->angle_increment);
+	
+	bool leftObstacle = false;
+	bool rightObstacle = false;
+	bool midObstacle = false;
+	
+	int numberOfPoints = 5;
 
-	float leftVal = averageRange(laserScanData, rangeDataNum - 65, rangeDataNum - 1);
-	float rightVal = averageRange(laserScanData, 0, 63);
-	float midVal = averageRange(laserScanData, rangeDataNum / 2 - 32, rangeDataNum / 2 + 32);
-
-	//To avoid obstacles
-	for (int j = 0; j < rangeDataNum; ++j) // Go through the laser data
+	// Find obstacles with laser scanners
+	for (int j = 0; j < rangeDataNum - numberOfPoints; ++j) // Go through the laser data
 	{
-		if (laserScanData->ranges[j] < laserScanTolerance)
+		// average to elimate noise
+		float currentVal  = averageRange(laserScanData, j, j + numberOfPoints);
+		
+		//float lsTolerance = getLaserScanTolerance(j, rangeDataNum);
+		
+		if (currentVal < laserScanTolerance)
 		{
-			// If a laser scan is within the tolerance then move to object avoidance state
-			setNextState(STATE_OBJECTAVOIDANCE, false);
-
-			if (rightVal > leftVal)
+			if(j < rangeDataNum / 3 - numberOfPoints)
 			{
-				// Turn right
-				setRobotMovement(0, -0.6);
+				rightObstacle = true;
+			}
+			else if(j < rangeDataNum * 2 / 3 - numberOfPoints)
+			{
+				midObstacle = true;
 			}
 			else
 			{
-				// Turn left
-				setRobotMovement(0, 0.6);
+				leftObstacle = true;
 			}
-			return;
-
+		}
+	}
+	
+	//ROS_INFO("Obstacles: L %d M %d R %d", leftObstacle, midObstacle, rightObstacle);
+	
+	if (rightObstacle || midObstacle || leftObstacle)
+	{
+		// If there is an obstacle then go to object avoidance state
+		setNextState(STATE_OBJECTAVOIDANCE, false);
+	
+		// Turn based on obstacles	
+		if (rightObstacle && midObstacle && leftObstacle)
+		{
+			// U turn
+			// turn right
+			setRobotMovement(0, -1.6);
+		}
+		else if (rightObstacle && leftObstacle)
+		{
+			// U turn
+			// turn right
+			setRobotMovement(0, -1.6);
+		}
+		else if (leftObstacle)
+		{
+			// turn right
+			setRobotMovement(0, -0.3);
+		}
+		else if (rightObstacle)
+		{
+			// turn left
+			setRobotMovement(0, 0.3);
+		}
+		else if (midObstacle)
+		{
+			// turn right
+			setRobotMovement(0, -0.6);
 		}
 	}
 
-	if (currentState == STATE_OBJECTAVOIDANCE)
+	if (!rightObstacle && !midObstacle && !leftObstacle && currentState == STATE_OBJECTAVOIDANCE)
 	{
 		setNextState(previousState, false);
 	}

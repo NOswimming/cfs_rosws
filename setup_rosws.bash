@@ -53,3 +53,5 @@ source ~/rosws/devel/setup.bash || { echo '///// source ~/rosws/devel/setup.bash
 echo "////////////////////////////////////////"
 echo "///// FINISHED SETUP SUCCESSFULLY! /////"
 echo "////////////////////////////////////////"
+
+echo "### copy RosAria files into workspace ###"
