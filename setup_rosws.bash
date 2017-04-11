@@ -28,14 +28,13 @@ cd ~/rosws/src || { echo '///// cd ~/rosws/src FAILED! /////' ; exit 1; }
 catkin_create_pkg robot_driver std_msgs roscpp || { echo '///// catkin_create_pkg FAILED! /////' ; exit 1; }
 
 # create the pioneerLaser.cpp file and copy content to it
-cat ~/cfs_rosws/pioneerLaser.cpp >> ~/rosws/src/robot_driver/src/pioneerLaser.cpp || { echo '///// concat pioneerLaser.cpp FAILED! /////' ; exit 1; }
+cp -Trv ~/cfs_rosws/robot_driver/src/ ~/rosws/src/robot_driver/src/ || { echo '///// copy src files FAILED! /////' ; exit 1; }
 
 # create the launch files and copy content to them
 mkdir -p ~/rosws/src/robot_driver/launch || { echo '///// mkdir -p ~/rosws/src/robot_driver/launch FAILED! /////' ; exit 1; }
-cat ~/cfs_rosws/robot.launch >> ~/rosws/src/robot_driver/launch/robot.launch || { echo '///// concat robot.launch FAILED! /////' ; exit 1; }
-cat ~/cfs_rosws/stage.launch >> ~/rosws/src/robot_driver/launch/stage.launch || { echo '///// concat stage.launch FAILED! /////' ; exit 1; }
+cp -Trv ~/cfs_rosws/robot_driver/launch/ ~/rosws/src/robot_driver/launch/ || { echo '///// copy launch files FAILED! /////' ; exit 1; }
 mkdir -p ~/rosws/src/robot_driver/world || { echo '///// mkdir -p ~/rosws/src/robot_driver/world FAILED! /////' ; exit 1; }
-cat ~/cfs_rosws/myworld.world >> ~/rosws/src/robot_driver/world/myworld.world || { echo '///// concat myworld.world FAILED! /////' ; exit 1; }
+cp -Trv ~/cfs_rosws/robot_driver/world/ ~/rosws/src/robot_driver/world/ || { echo '///// copy world files FAILED! /////' ; exit 1; }
 
 # add lines to CMakelists.txt
 cat <<EOT >> ~/rosws/src/robot_driver/CMakeLists.txt

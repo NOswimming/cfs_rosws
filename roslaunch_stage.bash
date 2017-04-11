@@ -8,11 +8,13 @@ echo "/////////////////////////////"
 
 echo "Copying file content from the ~/cfs_rosws directory"
 
-# copy file content from the ~/cfs_rosws directory
-cp -T ~/cfs_rosws/pioneerLaser.cpp ~/rosws/src/robot_driver/src/pioneerLaser.cpp || { echo '///// cp pioneerLaser.cpp FAILED! /////' ; exit 1; }
-cp -T ~/cfs_rosws/robot.launch ~/rosws/src/robot_driver/launch/robot.launch || { echo '///// cp robot.launch FAILED! /////' ; exit 1; }
-cp -T ~/cfs_rosws/stage.launch ~/rosws/src/robot_driver/launch/stage.launch || { echo '///// cp stage.launch FAILED! /////' ; exit 1; }
-cp -T ~/cfs_rosws/myworld.world ~/rosws/src/robot_driver/world/myworld.world || { echo '///// cp myworld.world FAILED! /////' ; exit 1; }
+# remove directory contents and copy new file content from the ~/cfs_rosws directory
+rm -r ~/rosws/src/robot_driver/src/* || { echo '///// removing src files FAILED! /////' ; exit 1; }
+cp -Trv ~/cfs_rosws/robot_driver/src/ ~/rosws/src/robot_driver/src/ || { echo '///// copy src files FAILED! /////' ; exit 1; }
+rm -r ~/rosws/src/robot_driver/launch/* || { echo '///// removing launch files FAILED! /////' ; exit 1; }
+cp -Trv ~/cfs_rosws/robot_driver/launch/ ~/rosws/src/robot_driver/launch/ || { echo '///// copy launch files FAILED! /////' ; exit 1; }
+rm -r ~/rosws/src/robot_driver/world/* || { echo '///// removing world files FAILED! /////' ; exit 1; }
+cp -Trv ~/cfs_rosws/robot_driver/world/ ~/rosws/src/robot_driver/world/ || { echo '///// copy world files FAILED! /////' ; exit 1; }
 
 # build the new package
 cd ~/rosws || { echo '///// cd ~/rosws FAILED! /////' ; exit 1; }

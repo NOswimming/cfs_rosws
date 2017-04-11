@@ -7,6 +7,8 @@
 #include <fstream>
 using namespace std;
 
+#include "Debug.cpp"
+
 ////////// DEBUGGING //////////
 bool DEBUG_PrintStateChange = true;
 bool DEBUG_WriteMapUpdateToFile = true;
@@ -412,7 +414,7 @@ void scanArea(float currentOrientation)
 	float scanOrientation90 = wrapAngle(scanStartOrientation + 0.5);
 	float scanOrientation180 = wrapAngle(scanStartOrientation + 1);
 	float scanOrientation270 = wrapAngle(scanStartOrientation + 1.5);
-	
+
 	// start orientation requires extra condition or will immediately be true
 	if (currentOrientation > scanStartOrientation - scanTolerance && currentOrientation < scanStartOrientation + scanTolerance && scanned[2] == 1)
 	{
@@ -510,7 +512,7 @@ void setCurrentState(int state, bool callEnterState)
 		return;
 	}
 
-	// Set current and previous states	
+	// Set current and previous states
 	previousState = currentState;
 	currentState = state;
 
@@ -519,14 +521,14 @@ void setCurrentState(int state, bool callEnterState)
 	{
 		enterState(currentState);
 	}
-	
+
 	if (DEBUG_PrintStateChange)
 	{
 		char previousStateName[20];
 		getStateName(previousState, previousStateName);
 		char currentStateName[20];
 		getStateName(currentState, currentStateName);
-		
+
 		ROS_INFO("\nState changed from %s to %s", previousStateName, currentStateName);
 	}
 }
@@ -542,12 +544,12 @@ void checkState()
 	{
 		setNextState(STATE_SCANNING, true);
 	}
-	
+
 	if (currentState == STATE_SCANNING)
 	{
 		scanArea(currentPose.orientation.z);
 	}
-	
+
 	if (currentState == STATE_PATHING)
 	{
 		pathToCurrentGoal(currentPose);
@@ -567,13 +569,13 @@ void mapCallback(const nav_msgs::OccupancyGrid::ConstPtr &map)
 	populateTiledMap(map);
 	// Update the naviagtion map based on the tiled map values
 	populateNavigationMap();
-	
+
 	if (DEBUG_WriteMapUpdateToFile)
 	{
 		ROS_INFO("\nMap Size: %d, %d\nMap Origin: %f, %f", map->info.width, map->info.height, map->info.origin.position.x, map->info.origin.position.y);
 		DEBUG_printTiledMap();
 		DEBUG_printNavigationMap();
-	}	
+	}
 }
 
 /**
@@ -584,10 +586,10 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr &odom)
 {
 	// Update current pose
 	currentPose = odom->pose.pose;
-	
+
 	checkState();
-	
-	
+
+
 	if (DEBUG_PrintCurrentPose)
 	{
 		ROS_INFO("CURRENT POSE\nPosition: %f, %f Orientation: %f", currentPose.position.x, currentPose.position.y, currentPose.orientation.z);
@@ -615,7 +617,7 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 		{
 			// If a laser scan is within the tolerance then move to object avoidance state
 			setNextState(STATE_OBJECTAVOIDANCE, false);
-			
+
 			velocityCommand.linear.x = 0;
 			if (rightVal > leftVal)
 			{
@@ -631,7 +633,7 @@ void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
 
 		}
 	}
-	
+
 	if (currentState == STATE_OBJECTAVOIDANCE)
 	{
 		setNextState(previousState, false);
@@ -650,6 +652,12 @@ int main(int argc, char **argv)
 // Creates the ROS pioneer laser node
 	ros::init(argc, argv, "pioneer_laser_node");
 	ros::NodeHandle my_handle;
+	
+	Debug *debug = new Debug(true);
+	if(debug->PrintStateChange == true)
+	{
+		ROS_INFO("Debugging works");
+	}
 
 // Create ROS publishers for topics
 	ros::Publisher vel_pub_object = my_handle.advertise<geometry_msgs::Twist>("/RosAria/cmd_vel", 1);
