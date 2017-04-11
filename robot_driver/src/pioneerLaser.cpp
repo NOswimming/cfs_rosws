@@ -5,11 +5,15 @@
 #include "nav_msgs/Odometry.h"
 #include <iostream>
 #include <fstream>
+#include "Debug.cpp"
+#include "Vector2Int.cpp"
+#include "Vector2Float.cpp"
 #include "Robot.cpp"
 
 using namespace std;
 
-// Only contains the main function for logic see Robot.cpp
+// Only contains the main function.
+// For logic see Robot.cpp
 
 /**
  * Main function for starting the pioneer laser node used by ROS.
