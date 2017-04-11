@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 #include "Robot.cpp"
+
 using namespace std;
 
 // Only contains the main function for logic see Robot.cpp
@@ -19,15 +20,6 @@ int main(int argc, char **argv)
 	// Creates the ROS pioneer laser node
 	ros::init(argc, argv, "pioneer_laser_node");
 	ros::NodeHandle my_handle;
-	
-	
-	if(debug.PrintStateChange == true)
-	{
-		ROS_INFO("Debugging works");
-		ROS_INFO("Map size: %d %d", mapSize.x, mapSize.y);
-		ROS_INFO("Map offset %f %f", mapOffset.x, mapOffset.y);
-		
-	}
 
 	// Create ROS publishers for topics
 	ros::Publisher vel_pub_object = my_handle.advertise<geometry_msgs::Twist>("/RosAria/cmd_vel", 1);

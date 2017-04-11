@@ -5,12 +5,13 @@
 #include "nav_msgs/Odometry.h"
 #include <iostream>
 #include <fstream>
-using namespace std;
-
-// My included files
 #include "Debug.cpp"
 #include "Vector2Int.cpp"
 #include "Vector2Float.cpp"
+
+using namespace std;
+
+
 
 ////////// VARIABLES //////////
 Debug debug(true);
