@@ -5,10 +5,12 @@
 #include "nav_msgs/Odometry.h"
 #include <iostream>
 #include <fstream>
+#include <math.h>
 #include "Debug.h"
 #include "Vector2Int.h"
 #include "Vector2Float.h"
 #include "RobotHelperFunctions.cpp"
+#include "Mapping.cpp"
 
 using namespace std;
 
@@ -33,16 +35,18 @@ Vector2Float mapOffset (-10, -10);
 float tiledMapResolution = 0.25;
 int tiledMapScaling = tiledMapResolution / mapResolution;
 Vector2Int tiledMapSize(mapSize.x / tiledMapScaling, mapSize.y / tiledMapScaling);
-int tiledMap [6400] =
-{ -1 }; // Initialize all values to unknown
+int tiledMap [6400];
 
 // Navigation map
 Vector2Int navigationMapSize(tiledMapSize.x, tiledMapSize.y);
-int navigationMap [6400] =
-{ -1 }; // Initialize all values to unknown
+int navigationMap [6400];
+
+// Mapping 2D
+int navigationMap2d[80][80];
 
 // Path
 Vector2Float currentGoal (0,0);
+int currentStep = 0;
 //Vector2Float pathPoints[3] { { 1, 1 }, { 2, 2 }, { 3, 3 } };
 
 // Scan
@@ -62,7 +66,12 @@ int STATE_OBJECTAVOIDANCE = -1;
 int STATE_PATHING = 1;
 int STATE_SCANNING = 2;
 
-
+void initializeRobot()
+{
+	// Initialize all values to unknown
+	std::fill_n(tiledMap, 6400, -1); 
+	std::fill_n(navigationMap, 6400, -1);
+}
 
 void setNextState(int state, bool callEnterState)
 {
@@ -70,65 +79,18 @@ void setNextState(int state, bool callEnterState)
 	nextCallEnterState = callEnterState;
 }
 
-////////// DEBUGGING FUNCTIONS //////////
-
-/**
- * Prints the tiled map.
- */
-void DEBUG_printTiledMap()
+void setRobotMovementWithTolerance(float linearSpeed, float rotationalSpeed, float laserScanTolerance)
 {
-	// Open a file to print to
-	char filename[] = "/home/robot/DEBUG_tiled_map.txt";
-	ofstream  myfile(filename);
-	myfile << "Tiled Map Output:\n";
-
-	char buf[5];
-
-	for (int y = 0; y < tiledMapSize.y; y++)
-	{
-		for (int x = 0; x < tiledMapSize.x; x++)
-		{
-			snprintf (buf, 7, "%04d,", tiledMap[tiledMapSize.x * y + x]);
-			myfile << buf;
-		}
-
-		myfile << "\n";
-	}
-
-	myfile.close();
-
-	ROS_INFO("\nDEBUG Output tiled map to file: %s", filename);
-
+	velocityCommand.linear.x = linearSpeed;
+	velocityCommand.angular.z = rotationalSpeed;
+	scanTolerance = laserScanTolerance;
 }
 
-/**
- * Prints the tiled map.
- */
-void DEBUG_printNavigationMap()
+void setRobotMovement(float linearSpeed, float rotationalSpeed)
 {
-	// Open a file to print to
-	char filename[] = "/home/robot/DEBUG_navigation_map.txt";
-	ofstream  myfile(filename);
-	myfile << "Tiled Map Output:\n";
-
-	char buf[5];
-
-	for (int y = 0; y < navigationMapSize.y; y++)
-	{
-		for (int x = 0; x < navigationMapSize.x; x++)
-		{
-			snprintf (buf, 7, "%02d,", navigationMap[navigationMapSize.x * y + x]);
-			myfile << buf;
-		}
-
-		myfile << "\n";
-	}
-
-	myfile.close();
-
-	ROS_INFO("\nDEBUG Output navigation map to file: %s", filename);
-
+	setRobotMovementWithTolerance(linearSpeed, rotationalSpeed, scanTolerance);
 }
+
 
 
 
@@ -244,18 +206,77 @@ void populateNavigationMap()
 
 void getNewGoal()
 {
-	// TODO
+	// Get current grid position for navigation array
+	Vector2Float globalPosition(currentPose.position.x, currentPose.position.y);
+	Vector2Int gridPosition(0,0);
+	gridPosition = getGridPositionForOdom(globalPosition, mapOffset, tiledMapResolution);
+	
+	if (debug.PrintNewTarget)
+	{
+		ROS_INFO("Grid position: %d %d", gridPosition.x, gridPosition.y);
+	}
+	
+	algorithmPos start;
+	retData data;
+	start.x = gridPosition.x;
+	start.y = gridPosition.y;
+	
+	convertArrayTo2D(navigationMap, navigationMap2d, navigationMapSize);
+	
+	if (debug.PrintNewTarget)
+	{
+		DEBUG_printNavigationMap2d(navigationMap2d, navigationMapSize);
+	}
+	
+	
+	algorithmPos target = findTarget(start,navigationMap2d);
+	
+	
+	if (debug.PrintNewTarget)
+	{
+		ROS_INFO("New target: %d %d", target.x, target.y);
+	}
+	
+	CalculateMap (start, target, navigationMap2d, data, 0);
+	
+	
+	ROS_INFO("Final step number: %d", finalStepNumber);
+	ROS_INFO("Final step 1: %d %d", finalSteps[0][0], finalSteps[0][1]);
+	DEBUG_printStepsToTarget(finalSteps, finalStepNumber);
+	
 }
 
 void pathToCurrentGoal(const geometry_msgs::Pose &pose)
 {
-	// TODO
+	// get grid position
+	Vector2Int gridPosition (finalSteps[currentStep][0], finalSteps[currentStep][1]);
+	// get global position
+	currentGoal = getOdomPositionForGrid(gridPosition, mapOffset, tiledMapResolution);
+	
+	Vector2Float currentOdomPosition (currentPose.position.x, currentPose.position.y);
+	float currentOrientation = currentPose.orientation.z;
+	
+	float desiredOrientation =  getDesiredOrientation(currentOdomPosition, currentGoal);
+	
+	
+	if(currentOrientation < desiredOrientation)
+	{
+		setRobotMovement(0.00, 0.6);
+	}
+	
+	if(currentOrientation > desiredOrientation)
+	{
+		setRobotMovement(0.00, -0.6);
+	}
+	
+	
 }
 
 ////////// SCANNING FUNCTIONS //////////
 
 void newScan(float currentOrientation)
 {
+	setRobotMovementWithTolerance(0, -0.6, 0.1);
 	scanStartOrientation = currentOrientation;
 	scanned[0] = 0;
 	scanned[1] = 0;
@@ -266,8 +287,7 @@ void newScan(float currentOrientation)
 void scanArea(float currentOrientation)
 {
 	// Set to be stationary and turn
-	velocityCommand.linear.x = 0;
-	velocityCommand.angular.z = -0.6;
+	setRobotMovement(0, -0.6);
 
 	float scanOrientation90 = wrapAngle(scanStartOrientation + 0.5);
 	float scanOrientation180 = wrapAngle(scanStartOrientation + 1);
@@ -400,7 +420,9 @@ void checkState()
 
 	if (currentState == STATE_START)
 	{
-		setNextState(STATE_SCANNING, true);
+		//setNextState(STATE_SCANNING, true);
+		// TODO: chnage
+		setNextState(STATE_PATHING, true);
 	}
 
 	if (currentState == STATE_SCANNING)
@@ -412,89 +434,4 @@ void checkState()
 	{
 		pathToCurrentGoal(currentPose);
 	}
-}
-
-
-////////// CALLBACK FUNCTIONS //////////
-
-/**
- * Callback function for subscription to the gmapping occupancy grid.
- * @param map - gmapping occupancy grid.
- */
-void mapCallback(const nav_msgs::OccupancyGrid::ConstPtr &map)
-{
-	// Populate the tiled map by reducing the occupancy grid to a lower resolution and summing the values
-	populateTiledMap(map);
-	// Update the naviagtion map based on the tiled map values
-	populateNavigationMap();
-
-	if (debug.WriteMapUpdateToFile)
-	{
-		ROS_INFO("\nMap Size: %d, %d\nMap Origin: %f, %f", map->info.width, map->info.height, map->info.origin.position.x, map->info.origin.position.y);
-		DEBUG_printTiledMap();
-		DEBUG_printNavigationMap();
-	}
-}
-
-/**
- * Callback function for subscription to the robot odometry.
- * @param odom - robot odometry message
- */
-void odomCallback(const nav_msgs::Odometry::ConstPtr &odom)
-{
-	// Update current pose
-	currentPose = odom->pose.pose;
-
-	checkState();
-
-
-	if (debug.PrintCurrentPose)
-	{
-		ROS_INFO("CURRENT POSE\nPosition: %f, %f Orientation: %f", currentPose.position.x, currentPose.position.y, currentPose.orientation.z);
-	}
-
-}
-
-/**
- * Callback function for subscription to the robot laser scanner.
- * @param laserScanData - robot laser scan message.
- */
-void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& laserScanData)
-{
-	// Array length
-	float rangeDataNum = 1 + (laserScanData->angle_max - laserScanData->angle_min) / (laserScanData->angle_increment);
-
-	float leftVal = averageRange(laserScanData, rangeDataNum - 65, rangeDataNum - 1);
-	float rightVal = averageRange(laserScanData, 0, 63);
-	float midVal = averageRange(laserScanData, rangeDataNum / 2 - 32, rangeDataNum / 2 + 32);
-
-	//To avoid obstacles
-	for (int j = 0; j < rangeDataNum; ++j) // Go through the laser data
-	{
-		if (laserScanData->ranges[j] < laserScanTolerance)
-		{
-			// If a laser scan is within the tolerance then move to object avoidance state
-			setNextState(STATE_OBJECTAVOIDANCE, false);
-
-			velocityCommand.linear.x = 0;
-			if (rightVal > leftVal)
-			{
-				// Turn right
-				velocityCommand.angular.z = -0.6;
-			}
-			else
-			{
-				// Turn left
-				velocityCommand.angular.z = 0.6;
-			}
-			return;
-
-		}
-	}
-
-	if (currentState == STATE_OBJECTAVOIDANCE)
-	{
-		setNextState(previousState, false);
-	}
-
 }

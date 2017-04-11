@@ -16,6 +16,9 @@ cp -Trv ~/cfs_rosws/robot_driver/launch/ ~/rosws/src/robot_driver/launch/ || { e
 rm -r ~/rosws/src/robot_driver/world/* || { echo '///// removing world files FAILED! /////' ; exit 1; }
 cp -Trv ~/cfs_rosws/robot_driver/world/ ~/rosws/src/robot_driver/world/ || { echo '///// copy world files FAILED! /////' ; exit 1; }
 
+# copy RosAria files into workspace
+cp –rf ~/catkin_ws/src/rosaria ~/rosws/src || { echo '///// copying RosAria files FAILED! /////' ; exit 1; }
+
 # build the new package
 cd ~/rosws || { echo '///// cd ~/rosws FAILED! /////' ; exit 1; }
 source ~/rosws/devel/setup.bash || { echo '///// source ~/rosws/devel/setup.bash FAILED! /////' ; exit 1; }

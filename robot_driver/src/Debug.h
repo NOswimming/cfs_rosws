@@ -8,6 +8,7 @@ public:
 	bool WriteMapUpdateToFile;
 	bool PrintCurrentPose;
 	bool PrintScannedArray;
+	bool PrintNewTarget;
 
 	Debug();
 	Debug(bool enable);

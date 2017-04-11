@@ -10,6 +10,8 @@
 
 using namespace std;
 
+#define PI 3.14159265
+
 /**
  * Gets the average laser data range for a given set of indices inclusive.
  *
@@ -124,3 +126,26 @@ int arrayAreaSum(const nav_msgs::OccupancyGrid::ConstPtr &map, Vector2Int &offse
 	}
 	return sum;
 }
+
+void convertArrayTo2D(int arrayInput[], int arrayOutput[80][80], Vector2Int size)
+{
+	for (int y = 0; y < size.y; y++)
+	{
+		for (int x = 0; x < size.x; x++)
+		{
+			arrayOutput[x][y] = arrayInput[x + y * size.x];
+		}
+		
+	}
+}
+
+
+float getDesiredOrientation(Vector2Float &currentPosition, Vector2Float &goal)
+{
+	float x = goal.x - currentPosition.x;
+	float y = goal.y - currentPosition.y;
+	
+	float desiredOrientation = atan (y/x) / PI;
+	return desiredOrientation;
+}
+
