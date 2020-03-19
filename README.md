@@ -1,5 +1,4 @@
 # cfs_rosws
-### ROS IS HELL.
 
 To use code copy folder "cfs_rosws" to "~"
 
